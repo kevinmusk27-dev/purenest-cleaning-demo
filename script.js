@@ -1,29 +1,44 @@
 'use strict';
 
-// V3: illustrative prices only; no network or storage access.
+// V4: illustrative prices only; no network or storage access.
 const DEMO_PRICING = {
   sizes: { small: 100, medium: 130, large: 160, xl: 190, xxl: 220, largest: 260 },
   types: { standard: 1, deep: 1.5, moving: 1.8 },
-  addons: { oven: 25, fridge: 25, windows: 40, laundry: 20 }
+  addons: { oven: 25, fridge: 25, windows: 40, laundry: 20 },
+  halfBathroom: 10
 };
 const calculator = document.querySelector('#calculator-controls');
-const calcSelects = ['size', 'bedrooms', 'bathrooms', 'type'].map(key => document.querySelector(`#calc-${key}`));
+const calcSelects = ['size', 'bedrooms', 'bathrooms', 'half-bathrooms', 'type'].map(key => document.querySelector(`#calc-${key}`));
 const calcAddons = [...document.querySelectorAll('.calc-addon')];
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+let announcementTimer;
+let lastAnnouncedPrice = '';
 function updateEstimate() {
-  const [size, beds, baths, type] = calcSelects.map(select => select.value);
+  const [size, beds, baths, halfBaths, type] = calcSelects.map(select => select.value);
   const base = DEMO_PRICING.sizes[size];
   const bedrooms = (Number(beds) - 1) * 15;
   const bathrooms = (Number(baths) - 1) * 20;
-  const subtotal = base + bedrooms + bathrooms;
+  const halfBathrooms = Number(halfBaths) * DEMO_PRICING.halfBathroom;
+  const subtotal = base + bedrooms + bathrooms + halfBathrooms;
   const multiplier = DEMO_PRICING.types[type];
   const cleaning = Math.round(subtotal * multiplier * 100) / 100;
   const addons = calcAddons.reduce((sum, input) => sum + (input.checked ? DEMO_PRICING.addons[input.value] : 0), 0);
-  Object.entries({ base, bedrooms, bathrooms, subtotal, cleaning, addons }).forEach(([key, amount]) => {
+  Object.entries({ base, bedrooms, bathrooms, 'half-bathrooms': halfBathrooms, subtotal, cleaning, addons }).forEach(([key, amount]) => {
     document.querySelector(`#price-${key}`).textContent = usd.format(amount);
   });
   document.querySelector('#price-multiplier').textContent = `× ${multiplier.toFixed(1)}`;
-  document.querySelector('#estimated-price').textContent = usd.format(cleaning + addons);
+  const formattedPrice = usd.format(cleaning + addons);
+  document.querySelector('#estimated-price').textContent = formattedPrice;
+  document.querySelector('#mobile-estimated-price').textContent = formattedPrice;
+  // Update visuals immediately; announce only the final total after rapid changes.
+  // One live region avoids repeating the breakdown, currency label, and disclaimer.
+  clearTimeout(announcementTimer);
+  announcementTimer = setTimeout(() => {
+    if (formattedPrice !== lastAnnouncedPrice) {
+      document.querySelector('#estimate-announcement').textContent = `Demo estimated price: ${formattedPrice} USD.`;
+      lastAnnouncedPrice = formattedPrice;
+    }
+  }, 400);
 }
 function resetCalculator() {
   calcSelects.forEach(select => { select.selectedIndex = 0; });
@@ -37,6 +52,18 @@ calculatorReset.addEventListener('click', resetCalculator);
 calculatorReset.disabled = false;
 resetCalculator();
 window.addEventListener('pageshow', resetCalculator);
+
+// Keep keyboard and screen-reader focus aligned with quote navigation.
+document.querySelectorAll('a[href="#instant-quote"], a[href="#estimate-summary"]').forEach(link => {
+  link.addEventListener('click', (event) => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (window.location.hash !== link.hash) window.history.pushState(null, '', link.hash);
+    const target = document.querySelector(link.hash === '#instant-quote' ? '#calculator-title' : '#estimate-summary');
+    target.scrollIntoView({ block: 'start' });
+    target.focus({ preventScroll: true });
+  });
+});
 
 const menuButton = document.querySelector('.menu-toggle');
 const navigation = document.querySelector('#main-nav');
